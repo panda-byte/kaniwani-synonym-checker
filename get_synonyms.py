@@ -70,7 +70,7 @@ def list_synonyms(synonyms: dict[str, dict[str, list[int]]]) -> str:
     pass
 
 
-def simplify_subjects(full_subjects: dict):
+def simplify_subjects(full_subjects: list):
     # `accepted_answer` is always `true` for meanings.
 
     # In a few cases, there are multiple primary meanings:
@@ -110,7 +110,10 @@ def simplify_subjects(full_subjects: dict):
                 m['meaning']
                 for m in subject['data']['auxiliary_meanings']
                 if m['type'] == 'whitelist'
-            ]
+            ],
+            'parts_of_speech':
+                subject['data']['parts_of_speech']
+                if subject['object'] == 'vocabulary' else None
         })
 
     return subjects
