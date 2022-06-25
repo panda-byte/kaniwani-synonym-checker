@@ -33,7 +33,8 @@ def find_synonyms(subjects: dict[str: Any], quiet: bool = False,
             subject['meanings'] = [subject['primary_meaning']]
 
             if not only_primary:
-                subject['meanings'] += subject['other_meanings']
+                subject['meanings'] += subject['other_meanings'] \
+                                       + subject['auxiliary_meanings']
 
             grouped_subjects[subject['object']].append(subject)
 
