@@ -163,52 +163,74 @@ def get_twin_subjects(subjects: dict):
         [meanings, vocabulary]
         for meanings, vocabulary in mapping.items()
         if len(vocabulary) > 1
+    ]
+
+
+def prepare_all_files(token: str):
+    subjects = prepare_synonyms(token)
+    synonyms = prepare_synonyms(subjects)
+
+    prepare_userscript_files(subjects, synonyms)
+    prepare_forum_post(subjects, synonyms)
+
+
+def prepare_subjects(token: str):
+    full_subjects = get_all_subjects(token)
+
+    with open('full_subjects.json', 'w', encoding='utf-8') as file:
+        json.dump(full_subjects, file, ensure_ascii=False)
+
+    subjects = simplify_subjects(full_subjects)
+
+    with open('subjects.json', 'w', encoding='utf-8') as file:
+        json.dump(subjects, file, ensure_ascii=False)
+
+    return subjects
+
+
+def prepare_synonyms(subjects: list):
+    synonyms = find_synonyms(subjects)
+
+    with open('synonyms.json', 'w', encoding='utf-8') as file:
+        json.dump(synonyms, file, ensure_ascii=False)
+
+    return synonyms
+
+
+def prepare_forum_post(subjects, synonyms):
+    with open('forum_synonyms.txt', 'w', encoding='utf-8') as file:
+        subjects = {subject['id']: subject for subject in subjects}
+
+        for subject_type, synonyms_by_type in synonyms.items():
+            file.write(f"[details='{subject_type.title()}']\n")
+
+            for meaning, synonym_ids in synonyms_by_type.items():
+                synonyms_formatted = ', '.join(
+                    subjects[id]['characters'] for id in synonym_ids
+                )
+
+                file.write(f"* {meaning}: {synonyms_formatted}\n")
+
+            file.write("[/details]\n")
+
+
+def prepare_userscript_files(subjects, synonyms):
+    vocab_subjects = {
+        subject['id']: subject for subject in subjects
+        if subject['object'] == 'vocabulary'
     }
 
+    with open('vocab_subjects.json', 'w', encoding='utf-8') as file:
+        json.dump(vocab_subjects, file, ensure_ascii=False)
+
+    with open('vocab_synonyms.json', 'w', encoding='utf-8') as file:
+        json.dump(synonyms['vocabulary'], file, ensure_ascii=False)
+
+    twins = get_twin_subjects(subjects)
+
+    with open('twins.json', 'w', encoding='utf-8') as file:
+        json.dump(twins, file, ensure_ascii=False)
+
+
 if __name__ == '__main__':
-    # token = sys.argv[1]
-
-
-    # with open('full_subjects.json', 'w', encoding='utf-8') as file:
-    #     json.dump(get_all_subjects(token),
-    #               file, ensure_ascii=False)
-
-    with (
-        open('full_subjects.json', 'r', encoding='utf-8') as file_full_subjects,
-        open('subjects.json', 'w', encoding='utf-8') as file_subjects
-    ):
-        subjects = simplify_subjects(json.load(file_full_subjects))
-        json.dump(subjects, file_subjects, ensure_ascii=False)
-
-
-    #
-    # with (open('subjects.json', 'r', encoding='utf-8') as file_subjects,
-    #       open('synonyms.json', 'w', encoding='utf-8') as file_synonyms):
-    #     subjects = json.load(file_subjects)
-    #     json.dump(find_synonyms(subjects), file_synonyms, ensure_ascii=False)
-    #
-    # # format for forum post:
-    # with (open('synonyms.json', 'r', encoding='utf-8') as file_synonyms,
-    #       open('subjects.json', 'r', encoding='utf-8') as file_subjects,
-    #       open('synonyms.txt', 'w', encoding='utf-8') as file_text):
-    #     all_synonyms = json.load(file_synonyms)
-    #     subjects = {
-    #         subject['id']: subject for subject in json.load(file_subjects)
-    #     }
-    #
-    #     for subject_type, synonyms in all_synonyms.items():
-    #         file_text.write(f"[details='{subject_type.title()}']\n")
-    #
-    #         for meaning, synonym_ids in synonyms.items():
-    #             synonyms_formatted = ', '.join(
-    #                 subjects[id]['characters'] for id in synonym_ids
-    #             )
-    #
-    #             file_text.write(f"* {meaning}: {synonyms_formatted}\n")
-    #
-    #         file_text.write("[/details]\n")
-
-    #
-    # with open('full_subjects.json', 'r', encoding='utf-8') as file:
-    #     print(get_identical_vocab_synonyms(json.load(file)))
-    #
+    prepare_all_files(sys.argv[1])
