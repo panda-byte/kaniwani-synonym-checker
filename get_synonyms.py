@@ -215,8 +215,16 @@ def prepare_forum_post(subjects, synonyms):
 
 
 def prepare_userscript_files(subjects, synonyms):
+    def _get_sub_dict(d, keys):
+        return {k: d[k] for k in keys}
+
     vocab_subjects = {
-        subject['id']: subject for subject in subjects
+        subject['id']: _get_sub_dict(subject, (
+            'characters',
+            'primary_meaning',
+            'other_meanings',
+            'auxiliary_meanings'
+        )) for subject in subjects
         if subject['object'] == 'vocabulary'
     }
 
