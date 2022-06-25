@@ -119,6 +119,27 @@ def print_by_num_synonyms():
 
             pprint(synonyms_by_length)
 
+def get_identical_vocab_synonyms(subjects: dict):
+    """
+    Get subjects which are identical in both primary in secondary
+    meanings. These could present a problem for the userscript.
+    """
+    meanings_mapping = {}
+
+    for subject in filter(lambda subject: subject['object'] == 'vocabulary',
+                          subjects):
+        meanings = tuple(m['meanings'] for m in subject['data']['meanings'])
+
+        if meanings in meanings_mapping:
+            meanings_mapping[meanings].append(subject['characters'])
+        else:
+            meanings_mapping[meanings] = [subject['characters']]
+
+    return {
+        meanings: vocabulary
+        for meanings, vocabulary in meanings_mapping.items()
+        if len(vocabulary) > 1
+    }
 
 if __name__ == '__main__':
     token = sys.argv[1]
@@ -128,33 +149,35 @@ if __name__ == '__main__':
     #     json.dump(get_all_subjects(token),
     #               file, ensure_ascii=False)
 
-    extract_meanings()
+    # extract_meanings()
+    #
+    # with (open('subjects.json', 'r', encoding='utf-8') as file_subjects,
+    #       open('synonyms.json', 'w', encoding='utf-8') as file_synonyms):
+    #     subjects = json.load(file_subjects)
+    #     json.dump(find_synonyms(subjects), file_synonyms, ensure_ascii=False)
+    #
+    # # format for forum post:
+    # with (open('synonyms.json', 'r', encoding='utf-8') as file_synonyms,
+    #       open('subjects.json', 'r', encoding='utf-8') as file_subjects,
+    #       open('synonyms.txt', 'w', encoding='utf-8') as file_text):
+    #     all_synonyms = json.load(file_synonyms)
+    #     subjects = {
+    #         subject['id']: subject for subject in json.load(file_subjects)
+    #     }
+    #
+    #     for subject_type, synonyms in all_synonyms.items():
+    #         file_text.write(f"[details='{subject_type.title()}']\n")
+    #
+    #         for meaning, synonym_ids in synonyms.items():
+    #             synonyms_formatted = ', '.join(
+    #                 subjects[id]['characters'] for id in synonym_ids
+    #             )
+    #
+    #             file_text.write(f"* {meaning}: {synonyms_formatted}\n")
+    #
+    #         file_text.write("[/details]\n")
 
-    with (open('subjects.json', 'r', encoding='utf-8') as file_subjects,
-          open('synonyms.json', 'w', encoding='utf-8') as file_synonyms):
-        subjects = json.load(file_subjects)
-        json.dump(find_synonyms(subjects), file_synonyms, ensure_ascii=False)
 
-    # format for forum post:
-    with (open('synonyms.json', 'r', encoding='utf-8') as file_synonyms,
-          open('subjects.json', 'r', encoding='utf-8') as file_subjects,
-          open('synonyms.txt', 'w', encoding='utf-8') as file_text):
-        all_synonyms = json.load(file_synonyms)
-        subjects = {
-            subject['id']: subject for subject in json.load(file_subjects)
-        }
-
-        for subject_type, synonyms in all_synonyms.items():
-            file_text.write(f"[details='{subject_type.title()}']\n")
-
-            for meaning, synonym_ids in synonyms.items():
-                synonyms_formatted = ', '.join(
-                    subjects[id]['characters'] for id in synonym_ids
-                )
-
-                file_text.write(f"* {meaning}: {synonyms_formatted}\n")
-
-            file_text.write("[/details]\n")
-
-
+    with open('full_subjects.json', 'r', encoding='utf-8') as file:
+        print(get_identical_vocab_synonyms(json.load(file)))
 
