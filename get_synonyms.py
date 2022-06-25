@@ -69,37 +69,50 @@ def list_synonyms(synonyms: dict[str, dict[str, list[int]]]) -> str:
     pass
 
 
-def extract_meanings():
-    with (open('full_subjects.json', 'r', encoding='utf-8') as file_full_subjects,
-          open('subjects.json', 'w', encoding='utf-8') as file_meanings):
-        full_subjects = json.load(file_full_subjects)
+def simplify_subjects(full_subjects: dict):
+    # `accepted_answer` is always `true` for meanings.
 
-        subjects = []
+    # In a few cases, there are multiple primary meanings:
+    # https://www.wanikani.com/kanji/%E4%BC%9A
+    # https://www.wanikani.com/vocabulary/%E7%88%B6%E8%A6%AA
+    # https://www.wanikani.com/vocabulary/%E9%80%A3%E8%A6%87
+    # https://www.wanikani.com/kanji/%E7%BE%A8
+    # However, on the WaniKani page for them, only the first is
+    # presented as a 'PRIMARY' meaning, while the others are displayed
+    # as 'ALTERNATIVE' together with the `other_meanings` in order
+    # of appearance in `other_meanings`. Thus, the same is done here,
+    # using only the first 'primary' meaning as such, while the others
+    # are put in `other_meanings`. Note also that the first meaning is
+    # not always 'primary'.
 
-        for full_subject in full_subjects:
-            if full_subject['data']['hidden_at'] is not None:
-                continue
+    subjects = []
 
-            primary_meaning = \
-                next(m['meaning'] for m in full_subject['data']['meanings']
-                     if m['primary'])
+    for subject in full_subjects:
+        if subject['data']['hidden_at'] is not None:
+            continue
 
-            other_meanings = \
-                [m['meaning'] for m in full_subject['data']['meanings']
-                 if not m['primary']] \
-                + [m['meaning'] for m in full_subject['data']['auxiliary_meanings']
-                   if m['type'] == 'whitelist']
+        first_primary_meaning = next(
+            m['meaning'] for m in subject['data']['meanings'] if m['primary']
+        )
 
-            subjects.append({
-                'id': full_subject['id'],
-                'object': full_subject['object'],
-                'characters': full_subject['data']['characters'],
-                'document_url': full_subject['data']['document_url'],
-                'primary_meaning': primary_meaning,
-                'other_meanings': other_meanings
-            })
+        subjects.append({
+            'id': subject['id'],
+            'object': subject['object'],
+            'characters': subject['data']['characters'],
+            'document_url': subject['data']['document_url'],
+            'primary_meaning': first_primary_meaning,
+            'other_meanings': [
+                m['meaning'] for m in subject['data']['meanings']
+                if m['meaning'] != first_primary_meaning
+            ],
+            'auxiliary_meanings': [
+                m['meaning']
+                for m in subject['data']['auxiliary_meanings']
+                if m['type'] == 'whitelist'
+            ]
+        })
 
-        json.dump(subjects, file_meanings)
+    return subjects
 
 
 def print_by_num_synonyms():
@@ -118,6 +131,7 @@ def print_by_num_synonyms():
             ], key=lambda x: x[1])
 
             pprint(synonyms_by_length)
+
 
 def get_identical_vocab_synonyms(subjects: dict):
     """
@@ -142,14 +156,21 @@ def get_identical_vocab_synonyms(subjects: dict):
     }
 
 if __name__ == '__main__':
-    token = sys.argv[1]
+    # token = sys.argv[1]
 
 
     # with open('full_subjects.json', 'w', encoding='utf-8') as file:
     #     json.dump(get_all_subjects(token),
     #               file, ensure_ascii=False)
 
-    # extract_meanings()
+    with (
+        open('full_subjects.json', 'r', encoding='utf-8') as file_full_subjects,
+        open('subjects.json', 'w', encoding='utf-8') as file_subjects
+    ):
+        subjects = simplify_subjects(json.load(file_full_subjects))
+        json.dump(subjects, file_subjects, ensure_ascii=False)
+
+
     #
     # with (open('subjects.json', 'r', encoding='utf-8') as file_subjects,
     #       open('synonyms.json', 'w', encoding='utf-8') as file_synonyms):
@@ -177,7 +198,7 @@ if __name__ == '__main__':
     #
     #         file_text.write("[/details]\n")
 
-
-    with open('full_subjects.json', 'r', encoding='utf-8') as file:
-        print(get_identical_vocab_synonyms(json.load(file)))
-
+    #
+    # with open('full_subjects.json', 'r', encoding='utf-8') as file:
+    #     print(get_identical_vocab_synonyms(json.load(file)))
+    #
