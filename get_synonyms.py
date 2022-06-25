@@ -137,25 +137,31 @@ def print_by_num_synonyms():
             pprint(synonyms_by_length)
 
 
-def get_identical_vocab_synonyms(subjects: dict):
+def get_twin_subjects(subjects: dict):
     """
-    Get subjects which are identical in both primary in secondary
-    meanings. These could present a problem for the userscript.
+    Get subjects which are identical in both primary and other
+    meanings as well as the 'part of speech' (e.g. noun, suffix, etc.)
+    attribute. These could present a problem for the userscript, as they
+    are indistinguishable for the userscript, so the correct answer
+    can't be determined based on the hints provided by KaniWani.
+    They require special treatment by the userscript.
     """
-    meanings_mapping = {}
+    mapping = {}
 
     for subject in filter(lambda subject: subject['object'] == 'vocabulary',
                           subjects):
-        meanings = tuple(m['meanings'] for m in subject['data']['meanings'])
+        hints = (subject['primary_meaning'], ) \
+                + tuple(subject['other_meanings']) \
+                + tuple(subject['parts_of_speech'])
 
-        if meanings in meanings_mapping:
-            meanings_mapping[meanings].append(subject['characters'])
+        if hints in mapping:
+            mapping[hints].append(subject['characters'])
         else:
-            meanings_mapping[meanings] = [subject['characters']]
+            mapping[hints] = [subject['characters']]
 
-    return {
-        meanings: vocabulary
-        for meanings, vocabulary in meanings_mapping.items()
+    return [
+        [meanings, vocabulary]
+        for meanings, vocabulary in mapping.items()
         if len(vocabulary) > 1
     }
 
