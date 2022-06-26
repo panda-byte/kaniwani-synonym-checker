@@ -215,6 +215,10 @@ def prepare_forum_post(subjects, synonyms):
 
 
 def prepare_userscript_files(subjects, synonyms):
+    synonym_subject_ids = set(
+        v for values in synonyms['vocabulary'].values() for v in values
+    )
+
     def _get_sub_dict(d, keys):
         return {k: d[k] for k in keys}
 
@@ -226,14 +230,15 @@ def prepare_userscript_files(subjects, synonyms):
             'auxiliary_meanings'
         )) for subject in subjects
         if subject['object'] == 'vocabulary'
+           and subject['id'] in synonym_subject_ids
     }
 
-    synonym_subject_ids = set(
-        v for values in synonyms['vocabulary'].values() for v in values
-    )
+    twins = get_twin_subjects(subjects)
 
+    # pack structure for smaller size
     vocab_subjects = {
-        k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
+        id: [subject[k] for k in subject.keys()]
+        for id, subject in vocab_subjects.items()
     }
 
     with open('vocab_subjects.json', 'w', encoding='utf-8') as file:
@@ -242,11 +247,16 @@ def prepare_userscript_files(subjects, synonyms):
     with open('vocab_synonyms.json', 'w', encoding='utf-8') as file:
         json.dump(synonyms['vocabulary'], file, ensure_ascii=False)
 
-    twins = get_twin_subjects(subjects)
-
     with open('twins.json', 'w', encoding='utf-8') as file:
         json.dump(twins, file, ensure_ascii=False)
 
 
 if __name__ == '__main__':
-    prepare_all_files(sys.argv[1])
+    # prepare_all_files(sys.argv[1])
+
+    with (open('subjects.json', 'r', encoding='utf-8') as file_subjects,
+          open('synonyms.json', 'r', encoding='utf-8') as file_synonyms):
+        subjects = json.load(file_subjects)
+        synonyms = json.load(file_synonyms)
+
+        prepare_userscript_files(subjects, synonyms)
