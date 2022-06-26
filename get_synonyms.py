@@ -228,6 +228,14 @@ def prepare_userscript_files(subjects, synonyms):
         if subject['object'] == 'vocabulary'
     }
 
+    synonym_subject_ids = set(
+        v for values in synonyms['vocabulary'].values() for v in values
+    )
+
+    vocab_subjects = {
+        k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
+    }
+
     with open('vocab_subjects.json', 'w', encoding='utf-8') as file:
         json.dump(vocab_subjects, file, ensure_ascii=False)
 
