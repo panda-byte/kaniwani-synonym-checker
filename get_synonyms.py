@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 from pprint import pprint
 from typing import Any
 
@@ -215,6 +216,8 @@ def prepare_forum_post(subjects, synonyms):
 
 
 def prepare_userscript_files(subjects, synonyms):
+    directory = Path('data')
+
     def _get_sub_dict(d, keys):
         return {k: d[k] for k in keys}
 
@@ -236,15 +239,15 @@ def prepare_userscript_files(subjects, synonyms):
         k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
     }
 
-    with open('vocab_subjects.json', 'w', encoding='utf-8') as file:
+    with open(directory / 'vocab_subjects.json', 'w', encoding='utf-8') as file:
         json.dump(vocab_subjects, file, ensure_ascii=False)
 
-    with open('vocab_synonyms.json', 'w', encoding='utf-8') as file:
+    with open(directory / 'vocab_synonyms.json', 'w', encoding='utf-8') as file:
         json.dump(synonyms['vocabulary'], file, ensure_ascii=False)
 
     twins = get_twin_subjects(subjects)
 
-    with open('twins.json', 'w', encoding='utf-8') as file:
+    with open(directory / 'twins.json', 'w', encoding='utf-8') as file:
         json.dump(twins, file, ensure_ascii=False)
 
 
