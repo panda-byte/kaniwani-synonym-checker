@@ -72,7 +72,8 @@ def list_synonyms(synonyms: dict[str, dict[str, list[int]]]) -> str:
 
 
 def simplify_subjects(full_subjects: list):
-    # `accepted_answer` is always `true` for meanings.
+    # `accepted_answer` is always `true` for meanings, and also for
+    # all vocabulary readings (it is checked just to be sure anyway)
 
     # In a few cases, there are multiple primary meanings:
     # https://www.wanikani.com/kanji/%E4%BC%9A
@@ -114,7 +115,12 @@ def simplify_subjects(full_subjects: list):
             ],
             'parts_of_speech':
                 subject['data']['parts_of_speech']
-                if subject['object'] == 'vocabulary' else None
+                if subject['object'] == 'vocabulary' else None,
+            'readings': [
+                r['reading']
+                for r in subject['data']['readings']
+                if r['accepted_answer']
+            ] if subject['object'] == 'vocabulary' else None
         })
 
     return subjects
@@ -224,6 +230,7 @@ def prepare_userscript_files(subjects, synonyms):
     vocab_subjects = {
         subject['id']: _get_sub_dict(subject, (
             'characters',
+            'readings',
             'primary_meaning',
             'other_meanings',
             'auxiliary_meanings'
