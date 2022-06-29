@@ -168,7 +168,7 @@ def get_twin_subjects(subjects: dict):
 
 
 def prepare_all_files(token: str):
-    subjects = prepare_synonyms(token)
+    subjects = prepare_subjects(token)
     synonyms = prepare_synonyms(subjects)
 
     prepare_userscript_files(subjects, synonyms)
