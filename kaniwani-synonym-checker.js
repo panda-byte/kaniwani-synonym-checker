@@ -9,44 +9,44 @@
 // @grant        none
 // ==/UserScript==
 
-(function() {
+(async function() {
     'use strict';
 
-    const allTwins = new Map([
-        [["Fire", "noun"], ["火", "火事"]],
-        [["To Be Born", "intransitive verb", "ichidan verb"]]
-    ]);
+    class SessionManager {
+        constructor() {
 
-    // TODO get only subjects with synonyms
-    const subjects = {
-        "2467": {
-            "characters": "一",
-            "primary_meaning": "One",
-            "other_meanings": [],
-            "auxiliary_meanings": ["1"]
-        },
-        "2468": {
-            "characters": "一つ",
-            "primary_meaning": "One Thing",
-            "other_meanings": [],
-            "auxiliary_meanings": ["1 Thing"]
         }
-    };
-    const allSynonyms = {
-        "1 Thing": [2468, 4258],
-        "1 Volume": [4173, 4823]
-    };
+    }
+
+    const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
+
+    let [subjectsObject, allSynonymsObject, allTwinsLists]
+            = (await Promise.all([
+        Promise.all([
+            fetch(gitURL + "vocab_subjects.json"),
+            fetch(gitURL + "vocab_synonyms.json"),
+            fetch(gitURL + "twins.json"),
+        ]).then(responses =>
+            Promise.all(responses.map(response => response.json()))
+        )
+    ]))[0];
+
+    const subjects = new Map(Object.entries(subjectsObject));
+    const allSynonyms = new Map(Object.entries(allSynonymsObject));
+    const allTwins = new Map(allTwinsLists);
 
     // set cooldown time in ms for blocking enter on wrong answer
     const cooldownTime = 1000;
 
     let answerField = null;
     let answerBox = null;
+    let questionBox = null;
     let primaryMeaningElement = null;
     let otherMeaningsElement = null;
     let partsOfSpeechElement = null; // sc-1m1r938-0
 
     let inReviewSession = false;
+    let ready = false;
 
     let answerIncorrect = false;
     let cooldown = false;
@@ -63,11 +63,13 @@
     }, true);
 
 
-    const submitAnswer = event => {
-        if (!(inReviewSession && answerBox !== null)) {
+    const submitAnswer = async event => {
+        if (!(ready && answerBox !== null)) {
             answerIncorrect = false;
             return;
         }
+
+        console.log("----------------------------------------------");
 
         const primaryMeaning = primaryMeaningElement.textContent;
         const otherMeaningsString = otherMeaningsElement.textContent;
@@ -78,30 +80,100 @@
             ...partsOfSpeechElement.querySelectorAll('li > span')
         ].map(span => span.textContent);
 
-        const answer = answerField.value;
+        let answer = answerField.value;
+
+        if (answer.endsWith('n')) {
+            answer = answer.replace('n', 'ん');
+        }
+
+        console.log(`Answer: ${answer}`);
 
         const meanings = [primaryMeaning, ...otherMeanings];
         const hints = meanings + partsOfSpeech
-        const synonyms = meanings.map(meaning => allSynonyms[meaning])
-                                 .filter(meaning => meaning !== undefined);
+        const synonyms = [...new Set(meanings
+            .map(meaning => allSynonyms.get(meaning))
+            .filter(synonymId => synonymId !== undefined)
+            .flat()
+        )].map(synonymId => subjects.get(synonymId.toString()));
+
+        const synonymousAnswers
+            = synonyms.map(synonym => synonym['characters'] + " (" + synonym['readings'] + ")");
 
         const twins = allTwins.get(hints);
 
-        if (!synonyms) {
+        console.log(`Twins: ${twins}`);
+        console.log(`Synonyms: ${synonymousAnswers}`);
+
+        const matchingSynonym = synonyms.filter(synonym =>
+            [synonym['characters'], ...synonym['readings']].includes(answer)
+        );
+
+        console.log(`Matching synonym:`);
+        console.log(matchingSynonym[0]);
+
+        // not possible due to CORS violation at the moment
+        // get Jisho.org synonyms
+        // const controller = new AbortController()
+        // setTimeout(() => controller.abort(), 1000)
+        //
+        // const jishoMeanings = await fetch(
+        //     "https://jisho.org/api/v1/search/words?keyword="
+        //     + encodeURIComponent(answer),
+        //     {signal: controller.signal}
+        // ).then(response => response.json());
+
+        console.log("Jisho: ");
+        console.log(jishoMeanings);
+
+        if (!(synonyms.length > 0) || !(matchingSynonym.length > 0)) {
+            console.log("No synonyms found or answer not in synonyms!");
             return;
         }
 
-
-
-        if (!synonyms && twins) {
+        if (twins) {
+            console.log(`Twins found: ${twins}`);
+            return;
             // TODO check if answer correct
             // TODO create userscript that let's player try twice
         }
 
+        // find correct answer
+        const correctSubject = [...subjects.values()].filter(subject =>
+            subject['primary_meaning'] === primaryMeaning
+            && subject['other_meanings'].every(
+                (value, index) => value === otherMeanings[index]
+               )
+        );
+
+        if (correctSubject.length === 0) {
+            throw "No correct answer found!";
+        } else if (correctSubject.length > 1) {
+            throw "Multiple correct answers found!";
+        }
+
+        console.log(`Correct subject:`);
+        console.log(correctSubject[0]);
+
+
+        // const correctAnswers = [
+        //     correctSubject[0]['characters'], ...correctSubject[0]['readings']
+        // ];
+        //
+        // console.log(`correct: ${correctAnswers}`);
+
+        if (correctSubject[0] === matchingSynonym[0]) {
+            console.log("Answer was correct!");
+            return;
+        }
+
+        console.log("Answer was incorrect!");
+
+        // TODO event is currently not stopped!
         event.stopPropagation();
 
         // TODO make options about storing synonyms
 
+        // TODO: always: if not correct, try again
 
         // check with small delay
         // setTimeout(() => {
@@ -147,19 +219,20 @@
                     answerBox = answerField.parentElement;
                 }
 
+                questionBox = document.querySelector('div.lltPfd');
+
                 primaryMeaningElement = document.querySelector(
                     'div[data-question-primary]'
-                )
+                );
 
                 otherMeaningsElement = document.querySelector(
                     'div[data-question-secondary]'
                 );
 
-                partsOfSpeechElement = document.querySelector(
-                    'ul.sc-1m1r938-0'
-                );
+                partsOfSpeechElement = document.querySelector('ul.hyPboY');
 
                 if (![answerField, answerBox, primaryMeaningElement, otherMeaningsElement, partsOfSpeechElement].includes(null)) {
+                    ready = true;
                     clearInterval(findPageElements);
                 }
             }, 100);
@@ -177,9 +250,12 @@
         } else {
             answerField = null;
             answerBox = null;
+            questionBox = null;
             primaryMeaningElement = null;
             otherMeaningsElement = null;
             partsOfSpeechElement = null;
+
+            ready = false;
         }
 
         inReviewSession = hasSessionStarted;
