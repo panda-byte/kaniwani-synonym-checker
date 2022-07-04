@@ -36,6 +36,7 @@
         #inSession;
         sessionStartHook = new Hook();
         sessionEndHook = new Hook();
+        submitAnswerHook = new Hook();
 
         #selectors = new Map([
             ['answerField', '#answer'],
@@ -43,6 +44,7 @@
             ['primary', 'div[data-question-primary]'],
             ['secondary', 'div[data-question-secondary]'],
             ['partsOfSpeech', 'ul.hyPboY'],
+            ['submitButton', 'button[aria-label="Submit answer"]'],
         ]);
 
         #elements = new Map();
@@ -70,12 +72,32 @@
         }
 
         #startSession() {
+            window.addEventListener(
+                'click', this.#clickListener.bind(this), {capture: true}
+            );
+
             this.sessionStartHook.call();
         }
+
+
 
         #endSession() {
             this.sessionEndHook.call();
             this.#elements.clear();
+
+            window.removeEventListener(
+                'click', this.#clickListener, {capture: true}
+            );
+        }
+
+        #clickListener(event) {
+            if (this.#elements.get('submitButton').contains(event.target)) {
+                this.#submitAnswer();
+            }
+        }
+
+        #submitAnswer() {
+            this.submitAnswerHook.call();
         }
 
         waitForSessionStart() {
@@ -86,8 +108,6 @@
                 }
             }, 100);
         }
-
-
 
         static #checkSessionURL() {
             return document.URL.endsWith('/reviews/session');
@@ -129,6 +149,10 @@
 
     session.sessionStartHook.register(
         () => console.log(session)
+    );
+
+    session.submitAnswerHook.register(
+        () => console.log("Answer submitted!")
     );
 
     const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
@@ -318,59 +342,4 @@
     // }, 200);
 
     // check if user entered review session
-    setInterval(() => {
-        const hasSessionStarted = document.URL.endsWith('/reviews/session');
-
-        if (hasSessionStarted === inReviewSession) return;
-
-        if (hasSessionStarted) {
-            // try to find relevant page elements
-            const findPageElements = setInterval(() => {
-                answerField = document.getElementById('answer');
-
-                if (answerField !== null) {
-                    answerBox = answerField.parentElement;
-                }
-
-                questionBox = document.querySelector('div.lltPfd');
-
-                primaryMeaningElement = document.querySelector(
-                    'div[data-question-primary]'
-                );
-
-                otherMeaningsElement = document.querySelector(
-                    'div[data-question-secondary]'
-                );
-
-                partsOfSpeechElement = document.querySelector('ul.hyPboY');
-
-                if (![answerField, answerBox, primaryMeaningElement, otherMeaningsElement, partsOfSpeechElement].includes(null)) {
-                    ready = true;
-                    clearInterval(findPageElements);
-                }
-            }, 100);
-
-            const findSubmitButton = setInterval(() => {
-                const submitButton = document.querySelector('button[aria-label="Submit answer"]');
-
-                if (submitButton === null) return;
-
-                clearInterval(findSubmitButton);
-                submitButton.addEventListener('click', event => {
-                    submitAnswer(event);
-                }, true);
-            }, 100);
-        } else {
-            answerField = null;
-            answerBox = null;
-            questionBox = null;
-            primaryMeaningElement = null;
-            otherMeaningsElement = null;
-            partsOfSpeechElement = null;
-
-            ready = false;
-        }
-
-        inReviewSession = hasSessionStarted;
-    }, 200);
 })();
