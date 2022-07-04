@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 from pprint import pprint
-from typing import Any
+from typing import Any, Sequence
 
 import requests
 
@@ -24,51 +24,33 @@ def get_all_subjects(token): # -> list[dict[str, Any]]:
     return subjects
 
 
-def find_synonyms(subjects: dict[str: Any], quiet: bool = False,
-                  only_primary: bool = False, store_characters: bool = False):
-    # group by object type (kanji, vocabulary), remove radicals
-    grouped_subjects = {'kanji': [], 'vocabulary': []}
+def get_synonyms_by_object(subjects: list, objects: Sequence[str]):
+    return {
+        object: dict(sorted(find_synonyms(
+            s for s in subjects if s['object'] == object
+        ).items()))
+        for object in objects
+    }
+
+
+def find_synonyms(subjects: dict[str: Any], only_primary: bool = False,
+                  store_characters: bool = False):
+    synonyms = {}
 
     for subject in subjects:
-        if subject['object'] in grouped_subjects.keys():
-            subject['meanings'] = [subject['primary_meaning']]
+        id = subject['characters'] if store_characters else subject['id']
 
-            if not only_primary:
-                subject['meanings'] += subject['other_meanings'] \
-                                       + subject['auxiliary_meanings']
+        synonyms.setdefault(subject['primary_meaning'], set()).add(id)
 
-            grouped_subjects[subject['object']].append(subject)
+        if not only_primary:
+            for meaning in subject['other_meanings'] \
+                           + subject['auxiliary_meanings']:
+                synonyms.setdefault(meaning, set()).add(id)
 
-    all_synonyms = {'kanji': {}, 'vocabulary': {}}
-
-    for subject_type, subjects in grouped_subjects.items():
-        all_meanings = sorted({
-            meaning for subject in subjects for meaning in subject['meanings']
-        })
-
-        if not quiet:
-            print(f"{subject_type}:")
-
-        for i, meaning in enumerate(all_meanings, 1):
-            if not quiet:
-                print(f"{i} / {len(all_meanings)}\r")
-
-            synonyms = [
-                subject['characters'] if store_characters else subject['id']
-                for subject in subjects if meaning in subject['meanings']
-            ]
-
-            if len(synonyms) > 1:
-                all_synonyms[subject_type][meaning] = synonyms
-
-        if not quiet:
-            print("")
-
-    return all_synonyms
-
-
-def list_synonyms(synonyms: dict[str, dict[str, list[int]]]) -> str:
-    pass
+    return {
+        meaning: list(sorted(subjects)) for meaning, subjects in synonyms.items()
+        if len(subjects) > 1
+    }
 
 
 def simplify_subjects(full_subjects: list):
@@ -196,7 +178,7 @@ def prepare_subjects(token: str):
 
 
 def prepare_synonyms(subjects: list):
-    synonyms = find_synonyms(subjects)
+    synonyms = get_synonyms_by_object(subjects, ('kanji', 'vocabulary'))
 
     with open('synonyms.json', 'w', encoding='utf-8') as file:
         json.dump(synonyms, file, ensure_ascii=False)
