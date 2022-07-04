@@ -12,11 +12,124 @@
 (async function() {
     'use strict';
 
-    class SessionManager {
-        constructor() {
+    class Hook {
+        #callbacks;
 
+        constructor() {
+            this.#callbacks = [];
+        }
+
+        register(callback) {
+            this.#callbacks.push(callback);
+        }
+
+        call(event) {
+            this.#callbacks.map(callback => callback())
+        }
+
+        clear() {
+            this.#callbacks = [];
         }
     }
+
+    class SessionManager {
+        #inSession;
+        sessionStartHook = new Hook();
+        sessionEndHook = new Hook();
+
+        #selectors = new Map([
+            ['answerField', '#answer'],
+            ['questionBox', 'div.lltPfd'],
+            ['primary', 'div[data-question-primary]'],
+            ['secondary', 'div[data-question-secondary]'],
+            ['partsOfSpeech', 'ul.hyPboY'],
+        ]);
+
+        #elements = new Map();
+
+        constructor() {
+            this.waitForSessionStart();
+        }
+
+        get inSession() {
+            return this.#inSession;
+        }
+
+        #setSession(value) {
+            if (this.#inSession === value) {
+                return;
+            }
+
+            this.#inSession = value;
+
+            if (this.#inSession) {
+                this.#startSession();
+            } else {
+                this.#endSession();
+            }
+        }
+
+        #startSession() {
+            this.sessionStartHook.call();
+        }
+
+        #endSession() {
+            this.sessionEndHook.call();
+            this.#elements.clear();
+        }
+
+        waitForSessionStart() {
+            const waitInterval = setInterval(() => {
+                if (SessionManager.#checkSessionURL()) {
+                    clearInterval(waitInterval);
+                    this.#setupElements();
+                }
+            }, 100);
+        }
+
+
+
+        static #checkSessionURL() {
+            return document.URL.endsWith('/reviews/session');
+        }
+
+        #setupElements() {
+            const findElements = setInterval(() => {
+                let foundAll = true;
+
+                for (const [name, selector] of this.#selectors.entries()) {
+                    if (this.#elements.has(name)) {
+                        continue;
+                    }
+
+                    const element = document.querySelector(selector);
+
+                    if (element) {
+                        this.#elements.set(name, element);
+                    } else {
+                        foundAll = false;
+                    }
+                }
+
+                if (foundAll) {
+                    clearInterval(findElements);
+
+                    this.#elements.set(
+                        'answerBox',
+                        this.#elements.get('answerField').parentElement
+                    );
+
+                    this.#setSession(true);
+                }
+            }, 100);
+        }
+    }
+
+    const session = new SessionManager();
+
+    session.sessionStartHook.register(
+        () => console.log(session)
+    );
 
     const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
 
