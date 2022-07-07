@@ -224,12 +224,16 @@ def prepare_userscript_files(subjects, synonyms):
         v for values in synonyms['vocabulary'].values() for v in values
     )
 
-    vocab_subjects = {
+    vocab_synonym_subjects = {
         k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
     }
 
     with open(directory / 'vocab_subjects.json', 'w', encoding='utf-8') as file:
         json.dump(vocab_subjects, file, ensure_ascii=False)
+
+    with open(directory / 'vocab_synonym_subjects.json', 'w', encoding='utf-8')\
+            as file:
+        json.dump(vocab_synonym_subjects, file, ensure_ascii=False)
 
     with open(directory / 'vocab_synonyms.json', 'w', encoding='utf-8') as file:
         json.dump(synonyms['vocabulary'], file, ensure_ascii=False)
@@ -241,4 +245,12 @@ def prepare_userscript_files(subjects, synonyms):
 
 
 if __name__ == '__main__':
-    prepare_all_files(sys.argv[1])
+    # prepare_all_files(sys.argv[1])
+
+    with open('subjects.json', 'r', encoding='utf-8') as file:
+        subjects = json.load(file)
+
+    with open('synonyms.json', 'r', encoding='utf-8') as file:
+        synonyms = json.load(file)
+
+    prepare_userscript_files(subjects, synonyms)
