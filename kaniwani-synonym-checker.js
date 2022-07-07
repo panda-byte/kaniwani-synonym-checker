@@ -163,6 +163,10 @@
             return answer;
         }
 
+        #adjustPartOfSpeech(partOfSpeech) {
+            return partOfSpeech.toLowerCase();
+        }
+
         #submitAnswer(event) {
             const answer = this.#elements.get('answerField').value;
 
@@ -181,7 +185,7 @@
                     partsOfSpeech: [
                         ...this.#elements.get('partsOfSpeech')
                                .querySelectorAll('li > span')
-                    ].map(span => span.textContent)
+                    ].map(span => this.#adjustPartOfSpeech(span.textContent))
                 }
             };
 
@@ -310,6 +314,24 @@
         }
     }, true);
 
+    // check if subject in question has twins
+    session.submitAnswerHook.register((session, event, data, messages) => {
+        const twins = allTwins.get([
+            data.question.primary,
+            ...data.question.secondary,
+            ...data.question.partsOfSpeech
+        ]);
+
+        if (twins) {
+            console.log("Twins!");
+            console.log(twins);
+            event.stopPropagation();
+            return false;
+        } else {
+            console.log("No twins!");
+            return true;
+        }
+    });
 
     const submitAnswer = async event => {
         if (!(ready && answerBox !== null)) {
