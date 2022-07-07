@@ -7,6 +7,7 @@
 // @match        https://www.kaniwani.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=kaniwani.com
 // @grant        none
+// @require      https://unpkg.com/wanakana
 // ==/UserScript==
 
 (async function() {
@@ -23,8 +24,20 @@
             this.#callbacks.push(callback);
         }
 
-        call(event) {
-            this.#callbacks.map(callback => callback())
+        call(event = null, data = null) {
+            const messages = []
+
+            for (const callback of this.#callbacks) {
+                const result = callback(this, event, data, messages);
+
+                messages.push(result);
+
+                if ((result === false) || (event && event.cancelBubble)) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         clear() {
@@ -32,8 +45,7 @@
         }
     }
 
-    class SessionManager {
-        #inSession;
+    class Session {
         sessionStartHook = new Hook();
         sessionEndHook = new Hook();
         submitAnswerHook = new Hook();
@@ -50,61 +62,131 @@
         #elements = new Map();
 
         constructor() {
-            this.waitForSessionStart();
+            this.checkIfInReviewSession();
         }
 
-        get inSession() {
-            return this.#inSession;
+        static states = Object.freeze({
+            NOT_IN_SESSION: Symbol('NOT_IN_SESSION'),
+            AWAIT_ANSWER: Symbol('AWAIT_ANSWER'),
+            AWAIT_CONFIRMATION: Symbol('AWAIT_CONFIRMATION'),
+        });
+
+        #currentState = Session.states.NOT_IN_SESSION;
+
+        get currentState(){
+            return this.#currentState;
         }
 
-        #setSession(value) {
-            if (this.#inSession === value) {
-                return;
-            }
+        #setCurrentState(state) {
+            console.log("New state: ");
+            console.log(state);
 
-            this.#inSession = value;
+            this.#currentState = state;
+        }
 
-            if (this.#inSession) {
-                this.#startSession();
-            } else {
-                this.#endSession();
-            }
+        inSession() {
+            return this.#currentState !== Session.states.NOT_IN_SESSION
         }
 
         #startSession() {
+            console.log("Session started!");
+
             window.addEventListener(
                 'click', this.#clickListener.bind(this), {capture: true}
             );
 
-            this.sessionStartHook.call();
+            window.addEventListener(
+                'keydown', this.#keyDownListener.bind(this), {capture: true}
+            );
+
+            this.sessionStartHook.call(null);
         }
 
-
-
         #endSession() {
+            console.log("Session ended!");
             this.sessionEndHook.call();
             this.#elements.clear();
-
-            window.removeEventListener(
-                'click', this.#clickListener, {capture: true}
-            );
         }
 
         #clickListener(event) {
+            if (!this.inSession()) {
+                return;
+            }
+
+            console.log("Captured click!");
+
             if (this.#elements.get('submitButton').contains(event.target)) {
                 this.#submitAnswer();
             }
         }
 
-        #submitAnswer() {
-            this.submitAnswerHook.call();
+        #keyDownListener(event) {
+            if (!this.inSession()) {
+                return;
+            }
+
+            console.log("Captured keydown!");
+
+            if (event.key === 'Enter') {
+                this.#submitAnswer();
+            } else if (event.key === 'Backspace') {
+                if (this.#currentState === Session.states.AWAIT_CONFIRMATION) {
+                    this.#ignoreResult();
+                }
+            }
         }
 
-        waitForSessionStart() {
-            const waitInterval = setInterval(() => {
-                if (SessionManager.#checkSessionURL()) {
-                    clearInterval(waitInterval);
-                    this.#setupElements();
+        #isValidCharacter(char) {
+            // see https://stackoverflow.com/questions/19899554/unicode-range-for-japanese
+            return (
+                wanakana.isKana()
+                || wanakana.isKanji()
+                || char.match(/[\d!?n\u3000-\u30ff\uff00-\uffef\u4e00-\u9faf]/)
+            );
+        }
+
+        #isValidAnswer(answer) {
+            for (const char of answer) {
+                if (!this.#isValidCharacter(char)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        #submitAnswer() {
+            const answer = this.#elements.get('answerField').value;
+
+            if (!this.#isValidAnswer(answer)) {
+                console.log("Invalid answer!");
+                return;
+            }
+
+            if (!this.submitAnswerHook.call()) {
+                console.log("Submitting answer was stopped by callback!");
+                return;
+            }
+
+            this.#setCurrentState(Session.states.AWAIT_CONFIRMATION);
+        }
+
+        #ignoreResult() {
+            this.#setCurrentState(Session.states.AWAIT_ANSWER);
+        }
+
+        checkIfInReviewSession() {
+            setInterval(() => {
+                if (Session.#checkSessionURL()) {
+                    if (!this.inSession()) {
+                        this.#setCurrentState(Session.states.AWAIT_ANSWER);
+                        this.#initSession();
+                    }
+                } else {
+                    if (this.inSession()) {
+                        this.#setCurrentState(Session.states.NOT_IN_SESSION);
+                        this.#endSession();
+                    }
                 }
             }, 100);
         }
@@ -113,7 +195,7 @@
             return document.URL.endsWith('/reviews/session');
         }
 
-        #setupElements() {
+        #initSession() {
             const findElements = setInterval(() => {
                 let foundAll = true;
 
@@ -139,13 +221,13 @@
                         this.#elements.get('answerField').parentElement
                     );
 
-                    this.#setSession(true);
+                    this.#startSession()
                 }
             }, 100);
         }
     }
 
-    const session = new SessionManager();
+    const session = new Session();
 
     session.sessionStartHook.register(
         () => console.log(session)
@@ -167,6 +249,8 @@
             Promise.all(responses.map(response => response.json()))
         )
     ]))[0];
+
+
 
     const subjects = new Map(Object.entries(subjectsObject));
     const allSynonyms = new Map(Object.entries(allSynonymsObject));
