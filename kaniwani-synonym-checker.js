@@ -316,6 +316,8 @@
 
     // check if subject in question has twins
     session.submitAnswerHook.register((session, event, data, messages) => {
+        console.log("Check for twins!");
+
         const twins = allTwins.get([
             data.question.primary,
             ...data.question.secondary,
@@ -330,6 +332,49 @@
         } else {
             console.log("No twins!");
             return true;
+        }
+    });
+
+    // check if answer is correct
+    session.submitAnswerHook.register((session, event, data, messages) => {
+        console.log("Check if answer is correct!");
+
+        // find correct answer
+        const correctSubject = [...subjects.values()].filter(subject =>
+            subject['primary_meaning'] === data.question.primary
+            && subject['other_meanings'].every(
+                (value, index) =>
+                    value === data.question.secondary[index]
+               )
+        );
+
+        if (correctSubject.length === 0) {
+            throw "No correct answer found!";
+        } else if (correctSubject.length > 1) {
+            throw "Multiple correct answers found!";
+        }
+
+        console.log(`Correct subject:`);
+        console.log(correctSubject[0]);
+
+
+        const correctAnswers = [
+            correctSubject[0]['characters'], ...correctSubject[0]['readings']
+        ];
+        console.log(`correct: ${correctAnswers}`);
+
+        if (correctAnswers.includes(data.answer)) {
+            console.log("Answer was correct!");
+            event.stopPropagation();
+            return false;
+        } else {
+            console.log("Answer was incorrect!");
+
+            return {
+                correct: false,
+                correctSubject: correctSubject,
+                correctAnswers: correctAnswers
+            }
         }
     });
 
@@ -359,7 +404,6 @@
         console.log(`Answer: ${answer}`);
 
         const meanings = [primaryMeaning, ...otherMeanings];
-        const hints = meanings + partsOfSpeech
         const synonyms = [...new Set(meanings
             .map(meaning => allSynonyms.get(meaning))
             .filter(synonymId => synonymId !== undefined)
@@ -369,9 +413,6 @@
         const synonymousAnswers
             = synonyms.map(synonym => synonym['characters'] + " (" + synonym['readings'] + ")");
 
-        const twins = allTwins.get(hints);
-
-        console.log(`Twins: ${twins}`);
         console.log(`Synonyms: ${synonymousAnswers}`);
 
         const matchingSynonym = synonyms.filter(synonym =>
@@ -407,39 +448,7 @@
             // TODO create userscript that let's player try twice
         }
 
-        // find correct answer
-        const correctSubject = [...subjects.values()].filter(subject =>
-            subject['primary_meaning'] === primaryMeaning
-            && subject['other_meanings'].every(
-                (value, index) => value === otherMeanings[index]
-               )
-        );
 
-        if (correctSubject.length === 0) {
-            throw "No correct answer found!";
-        } else if (correctSubject.length > 1) {
-            throw "Multiple correct answers found!";
-        }
-
-        console.log(`Correct subject:`);
-        console.log(correctSubject[0]);
-
-
-        // const correctAnswers = [
-        //     correctSubject[0]['characters'], ...correctSubject[0]['readings']
-        // ];
-        //
-        // console.log(`correct: ${correctAnswers}`);
-
-        if (correctSubject[0] === matchingSynonym[0]) {
-            console.log("Answer was correct!");
-            return;
-        }
-
-        console.log("Answer was incorrect!");
-
-        // TODO event is currently not stopped!
-        event.stopPropagation();
 
         // TODO make options about storing synonyms
 
