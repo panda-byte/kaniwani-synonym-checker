@@ -24,11 +24,11 @@
             this.#callbacks.push(callback);
         }
 
-        call(event = null, data = null) {
+        call(session = null, event = null, data = null) {
             const messages = []
 
             for (const callback of this.#callbacks) {
-                const result = callback(this, event, data, messages);
+                const result = callback(session, event, data, messages);
 
                 messages.push(result);
 
@@ -99,12 +99,12 @@
                 'keydown', this.#keyDownListener.bind(this), {capture: true}
             );
 
-            this.sessionStartHook.call(null);
+            this.sessionStartHook.call(this);
         }
 
         #endSession() {
             console.log("Session ended!");
-            this.sessionEndHook.call();
+            this.sessionEndHook.call(this);
             this.#elements.clear();
         }
 
@@ -116,7 +116,7 @@
             console.log("Captured click!");
 
             if (this.#elements.get('submitButton').contains(event.target)) {
-                this.#submitAnswer();
+                this.#submitAnswer(event);
             }
         }
 
@@ -128,7 +128,7 @@
             console.log("Captured keydown!");
 
             if (event.key === 'Enter') {
-                this.#submitAnswer();
+                this.#submitAnswer(event);
             } else if (event.key === 'Backspace') {
                 if (this.#currentState === Session.states.AWAIT_CONFIRMATION) {
                     this.#ignoreResult();
@@ -155,7 +155,15 @@
             return true;
         }
 
-        #submitAnswer() {
+        #adjustAnswer(answer) {
+            if (answer.endsWith('n')) {
+                return answer.replace('n', 'ん');
+            }
+
+            return answer;
+        }
+
+        #submitAnswer(event) {
             const answer = this.#elements.get('answerField').value;
 
             if (!this.#isValidAnswer(answer)) {
@@ -163,7 +171,21 @@
                 return;
             }
 
-            if (!this.submitAnswerHook.call()) {
+            const secondary = this.#elements.get('secondary').textContent;
+
+            const data = {
+                answer: this.#adjustAnswer(answer),
+                question: {
+                    primary: this.#elements.get('primary').textContent,
+                    secondary: secondary ? secondary.split(', ') : [],
+                    partsOfSpeech: [
+                        ...this.#elements.get('partsOfSpeech')
+                               .querySelectorAll('li > span')
+                    ].map(span => span.textContent)
+                }
+            };
+
+            if (!this.submitAnswerHook.call(this, event, data)) {
                 console.log("Submitting answer was stopped by callback!");
                 return;
             }
@@ -233,8 +255,13 @@
         () => console.log(session)
     );
 
-    session.submitAnswerHook.register(
-        () => console.log("Answer submitted!")
+    session.submitAnswerHook.register((session, event, data, messages) => {
+            console.log("Answer submitted!");
+            console.log(session);
+            console.log(event);
+            console.log(data);
+            console.log(messages);
+        }
     );
 
     const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
