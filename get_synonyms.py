@@ -259,7 +259,6 @@ def prepare_userscript_files(subjects, synonyms):
             as file:
         json.dump(vocab_synonym_subjects, file, ensure_ascii=False)
 
-    with open(directory / 'vocab_synonyms.json', 'w', encoding='utf-8') as file:
     synonyms_path = directory / 'vocab_synonyms.json'
 
     with open(synonyms_path, 'w', encoding='utf-8') as file:
