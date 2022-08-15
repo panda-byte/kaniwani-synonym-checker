@@ -7,6 +7,7 @@
 // @match        https://www.kaniwani.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=kaniwani.com
 // @grant        none
+// @require      https://unpkg.com/wanakana
 // ==/UserScript==
 
 (async function() {
@@ -23,8 +24,20 @@
             this.#callbacks.push(callback);
         }
 
-        call(event) {
-            this.#callbacks.map(callback => callback())
+        call(session = null, event = null, data = null) {
+            const messages = []
+
+            for (const callback of this.#callbacks) {
+                const result = callback(session, event, data, messages);
+
+                messages.push(result);
+
+                if ((result === false) || (event && event.cancelBubble)) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         clear() {
@@ -32,8 +45,7 @@
         }
     }
 
-    class SessionManager {
-        #inSession;
+    class Session {
         sessionStartHook = new Hook();
         sessionEndHook = new Hook();
         submitAnswerHook = new Hook();
@@ -50,61 +62,157 @@
         #elements = new Map();
 
         constructor() {
-            this.waitForSessionStart();
+            this.checkIfInReviewSession();
         }
 
-        get inSession() {
-            return this.#inSession;
+        static states = Object.freeze({
+            NOT_IN_SESSION: Symbol('NOT_IN_SESSION'),
+            AWAIT_ANSWER: Symbol('AWAIT_ANSWER'),
+            AWAIT_CONFIRMATION: Symbol('AWAIT_CONFIRMATION'),
+        });
+
+        #currentState = Session.states.NOT_IN_SESSION;
+
+        get currentState(){
+            return this.#currentState;
         }
 
-        #setSession(value) {
-            if (this.#inSession === value) {
-                return;
-            }
+        #setCurrentState(state) {
+            console.log("New state: ");
+            console.log(state);
 
-            this.#inSession = value;
+            this.#currentState = state;
+        }
 
-            if (this.#inSession) {
-                this.#startSession();
-            } else {
-                this.#endSession();
-            }
+        inSession() {
+            return this.#currentState !== Session.states.NOT_IN_SESSION
         }
 
         #startSession() {
+            console.log("Session started!");
+
             window.addEventListener(
                 'click', this.#clickListener.bind(this), {capture: true}
             );
 
-            this.sessionStartHook.call();
+            window.addEventListener(
+                'keydown', this.#keyDownListener.bind(this), {capture: true}
+            );
+
+            this.sessionStartHook.call(this);
         }
 
-
-
         #endSession() {
-            this.sessionEndHook.call();
+            console.log("Session ended!");
+            this.sessionEndHook.call(this);
             this.#elements.clear();
-
-            window.removeEventListener(
-                'click', this.#clickListener, {capture: true}
-            );
         }
 
         #clickListener(event) {
+            if (!this.inSession()) {
+                return;
+            }
+
+            console.log("Captured click!");
+
             if (this.#elements.get('submitButton').contains(event.target)) {
-                this.#submitAnswer();
+                this.#submitAnswer(event);
             }
         }
 
-        #submitAnswer() {
-            this.submitAnswerHook.call();
+        #keyDownListener(event) {
+            if (!this.inSession()) {
+                return;
+            }
+
+            console.log("Captured keydown!");
+
+            if (event.key === 'Enter') {
+                this.#submitAnswer(event);
+            } else if (event.key === 'Backspace') {
+                if (this.#currentState === Session.states.AWAIT_CONFIRMATION) {
+                    this.#ignoreResult();
+                }
+            }
         }
 
-        waitForSessionStart() {
-            const waitInterval = setInterval(() => {
-                if (SessionManager.#checkSessionURL()) {
-                    clearInterval(waitInterval);
-                    this.#setupElements();
+        #isValidCharacter(char) {
+            // see https://stackoverflow.com/questions/19899554/unicode-range-for-japanese
+            return (
+                wanakana.isKana()
+                || wanakana.isKanji()
+                || char.match(/[\d!?n\u3000-\u30ff\uff00-\uffef\u4e00-\u9faf]/)
+            );
+        }
+
+        #isValidAnswer(answer) {
+            for (const char of answer) {
+                if (!this.#isValidCharacter(char)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        #adjustAnswer(answer) {
+            if (answer.endsWith('n')) {
+                return answer.replace('n', 'ん');
+            }
+
+            return answer;
+        }
+
+        #adjustPartOfSpeech(partOfSpeech) {
+            return partOfSpeech.toLowerCase();
+        }
+
+        #submitAnswer(event) {
+            const answer = this.#elements.get('answerField').value;
+
+            if (!this.#isValidAnswer(answer)) {
+                console.log("Invalid answer!");
+                return;
+            }
+
+            const secondary = this.#elements.get('secondary').textContent;
+
+            const data = {
+                answer: this.#adjustAnswer(answer),
+                question: {
+                    primary: this.#elements.get('primary').textContent,
+                    secondary: secondary ? secondary.split(', ') : [],
+                    partsOfSpeech: [
+                        ...this.#elements.get('partsOfSpeech')
+                               .querySelectorAll('li > span')
+                    ].map(span => this.#adjustPartOfSpeech(span.textContent))
+                }
+            };
+
+            if (!this.submitAnswerHook.call(this, event, data)) {
+                console.log("Submitting answer was stopped by callback!");
+                return;
+            }
+
+            this.#setCurrentState(Session.states.AWAIT_CONFIRMATION);
+        }
+
+        #ignoreResult() {
+            this.#setCurrentState(Session.states.AWAIT_ANSWER);
+        }
+
+        checkIfInReviewSession() {
+            setInterval(() => {
+                if (Session.#checkSessionURL()) {
+                    if (!this.inSession()) {
+                        this.#setCurrentState(Session.states.AWAIT_ANSWER);
+                        this.#initSession();
+                    }
+                } else {
+                    if (this.inSession()) {
+                        this.#setCurrentState(Session.states.NOT_IN_SESSION);
+                        this.#endSession();
+                    }
                 }
             }, 100);
         }
@@ -113,7 +221,7 @@
             return document.URL.endsWith('/reviews/session');
         }
 
-        #setupElements() {
+        #initSession() {
             const findElements = setInterval(() => {
                 let foundAll = true;
 
@@ -139,20 +247,25 @@
                         this.#elements.get('answerField').parentElement
                     );
 
-                    this.#setSession(true);
+                    this.#startSession()
                 }
             }, 100);
         }
     }
 
-    const session = new SessionManager();
+    const session = new Session();
 
     session.sessionStartHook.register(
         () => console.log(session)
     );
 
-    session.submitAnswerHook.register(
-        () => console.log("Answer submitted!")
+    session.submitAnswerHook.register((session, event, data, messages) => {
+            console.log("Answer submitted!");
+            console.log(session);
+            console.log(event);
+            console.log(data);
+            console.log(messages);
+        }
     );
 
     const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
@@ -167,6 +280,8 @@
             Promise.all(responses.map(response => response.json()))
         )
     ]))[0];
+
+
 
     const subjects = new Map(Object.entries(subjectsObject));
     const allSynonyms = new Map(Object.entries(allSynonymsObject));
@@ -199,6 +314,69 @@
         }
     }, true);
 
+    // check if subject in question has twins
+    session.submitAnswerHook.register((session, event, data, messages) => {
+        console.log("Check for twins!");
+
+        const twins = allTwins.get([
+            data.question.primary,
+            ...data.question.secondary,
+            ...data.question.partsOfSpeech
+        ]);
+
+        if (twins) {
+            console.log("Twins!");
+            console.log(twins);
+            event.stopPropagation();
+            return false;
+        } else {
+            console.log("No twins!");
+            return true;
+        }
+    });
+
+    // check if answer is correct
+    session.submitAnswerHook.register((session, event, data, messages) => {
+        console.log("Check if answer is correct!");
+
+        // find correct answer
+        const correctSubject = [...subjects.values()].filter(subject =>
+            subject['primary_meaning'] === data.question.primary
+            && subject['other_meanings'].every(
+                (value, index) =>
+                    value === data.question.secondary[index]
+               )
+        );
+
+        if (correctSubject.length === 0) {
+            throw "No correct answer found!";
+        } else if (correctSubject.length > 1) {
+            throw "Multiple correct answers found!";
+        }
+
+        console.log(`Correct subject:`);
+        console.log(correctSubject[0]);
+
+
+        const correctAnswers = [
+            correctSubject[0]['characters'], ...correctSubject[0]['readings']
+        ];
+        console.log(`correct: ${correctAnswers}`);
+
+        if (correctAnswers.includes(data.answer)) {
+            console.log("Answer was correct!");
+            event.stopPropagation();
+            return false;
+        } else {
+            console.log("Answer was incorrect!");
+
+            return {
+                correct: false,
+                correctSubject: correctSubject,
+                correctAnswers: correctAnswers
+            }
+        }
+    });
 
     const submitAnswer = async event => {
         if (!(ready && answerBox !== null)) {
@@ -226,7 +404,6 @@
         console.log(`Answer: ${answer}`);
 
         const meanings = [primaryMeaning, ...otherMeanings];
-        const hints = meanings + partsOfSpeech
         const synonyms = [...new Set(meanings
             .map(meaning => allSynonyms.get(meaning))
             .filter(synonymId => synonymId !== undefined)
@@ -236,9 +413,6 @@
         const synonymousAnswers
             = synonyms.map(synonym => synonym['characters'] + " (" + synonym['readings'] + ")");
 
-        const twins = allTwins.get(hints);
-
-        console.log(`Twins: ${twins}`);
         console.log(`Synonyms: ${synonymousAnswers}`);
 
         const matchingSynonym = synonyms.filter(synonym =>
@@ -274,39 +448,7 @@
             // TODO create userscript that let's player try twice
         }
 
-        // find correct answer
-        const correctSubject = [...subjects.values()].filter(subject =>
-            subject['primary_meaning'] === primaryMeaning
-            && subject['other_meanings'].every(
-                (value, index) => value === otherMeanings[index]
-               )
-        );
 
-        if (correctSubject.length === 0) {
-            throw "No correct answer found!";
-        } else if (correctSubject.length > 1) {
-            throw "Multiple correct answers found!";
-        }
-
-        console.log(`Correct subject:`);
-        console.log(correctSubject[0]);
-
-
-        // const correctAnswers = [
-        //     correctSubject[0]['characters'], ...correctSubject[0]['readings']
-        // ];
-        //
-        // console.log(`correct: ${correctAnswers}`);
-
-        if (correctSubject[0] === matchingSynonym[0]) {
-            console.log("Answer was correct!");
-            return;
-        }
-
-        console.log("Answer was incorrect!");
-
-        // TODO event is currently not stopped!
-        event.stopPropagation();
 
         // TODO make options about storing synonyms
 

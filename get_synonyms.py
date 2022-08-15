@@ -246,7 +246,7 @@ def prepare_userscript_files(subjects, synonyms):
         v for values in synonyms['vocabulary'].values() for v in values
     )
 
-    vocab_subjects = {
+    vocab_synonym_subjects = {
         k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
     }
 
@@ -255,6 +255,11 @@ def prepare_userscript_files(subjects, synonyms):
     with open(subjects_path, 'w', encoding='utf-8') as file:
         json.dump(vocab_subjects, file, ensure_ascii=False)
 
+    with open(directory / 'vocab_synonym_subjects.json', 'w', encoding='utf-8')\
+            as file:
+        json.dump(vocab_synonym_subjects, file, ensure_ascii=False)
+
+    with open(directory / 'vocab_synonyms.json', 'w', encoding='utf-8') as file:
     synonyms_path = directory / 'vocab_synonyms.json'
 
     with open(synonyms_path, 'w', encoding='utf-8') as file:
@@ -263,7 +268,7 @@ def prepare_userscript_files(subjects, synonyms):
     twins = get_twin_subjects(subjects)
     twins_path = directory / 'twins.json'
 
-    with open(twins_path, 'w', encoding='utf-8') as file:
+    with open(directory / 'twins.json', 'w', encoding='utf-8') as file:
         json.dump(twins, file, ensure_ascii=False)
 
     update_file_hashes(subjects_path, synonyms_path, twins_path,
