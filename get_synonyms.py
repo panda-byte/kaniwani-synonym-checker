@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -155,6 +156,27 @@ def get_twin_subjects(subjects: dict):
     ]
 
 
+# https://stackoverflow.com/a/3431838/9007090
+def get_file_hash(path: Path):
+    hash_md5 = hashlib.md5()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def update_file_hashes(subjects_path: Path, synonyms_path: Path,
+                       twins_path: Path, output_path: Path):
+    file_hashes = {
+        'vocab_subjects': get_file_hash(subjects_path),
+        'vocab_synonyms': get_file_hash(synonyms_path),
+        'twins': get_file_hash(twins_path)
+    }
+
+    with open(output_path, 'w') as file:
+        json.dump(file_hashes, file, ensure_ascii=False)
+
+
 def prepare_all_files(token: str):
     subjects = prepare_subjects(token)
     synonyms = prepare_synonyms(subjects)
@@ -228,16 +250,24 @@ def prepare_userscript_files(subjects, synonyms):
         k: v for k, v in vocab_subjects.items() if k in synonym_subject_ids
     }
 
-    with open(directory / 'vocab_subjects.json', 'w', encoding='utf-8') as file:
+    subjects_path = directory / 'vocab_subjects.json'
+
+    with open(subjects_path, 'w', encoding='utf-8') as file:
         json.dump(vocab_subjects, file, ensure_ascii=False)
 
-    with open(directory / 'vocab_synonyms.json', 'w', encoding='utf-8') as file:
+    synonyms_path = directory / 'vocab_synonyms.json'
+
+    with open(synonyms_path, 'w', encoding='utf-8') as file:
         json.dump(synonyms['vocabulary'], file, ensure_ascii=False)
 
     twins = get_twin_subjects(subjects)
+    twins_path = directory / 'twins.json'
 
-    with open(directory / 'twins.json', 'w', encoding='utf-8') as file:
+    with open(twins_path, 'w', encoding='utf-8') as file:
         json.dump(twins, file, ensure_ascii=False)
+
+    update_file_hashes(subjects_path, synonyms_path, twins_path,
+                       directory / 'file_hashes.json')
 
 
 if __name__ == '__main__':
