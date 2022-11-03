@@ -14,17 +14,18 @@
     'use strict';
 
     class Hook {
-        #callbacks;
+        #session;
+        #callbacks = [];
 
-        constructor() {
-            this.#callbacks = [];
+        constructor(session) {
+            this.#session = session;
         }
 
         register(callback) {
             this.#callbacks.push(callback);
         }
 
-        call(session = null, event = null, data = null) {
+        call(event = null, data = null) {
             const messages = []
 
             for (const callback of this.#callbacks) {
@@ -46,9 +47,9 @@
     }
 
     class Session {
-        sessionStartHook = new Hook();
-        sessionEndHook = new Hook();
-        submitAnswerHook = new Hook();
+        sessionStartHook;
+        sessionEndHook;
+        submitAnswerHook;
 
         #selectors = new Map([
             ['answerField', '#answer'],
@@ -73,6 +74,9 @@
 
         constructor() {
             this.#app = document.querySelector('#app');
+            this.sessionStartHook = new Hook(this);
+            this.sessionEndHook = new Hook(this);
+            this.submitAnswerHook = new Hook(this);
             this.#observeReviewSession();
         }
 
@@ -103,13 +107,13 @@
                 'keydown', this.#keyDownListener.bind(this), {capture: true}
             );
 
-            this.sessionStartHook.call(this);
+            this.sessionStartHook.call();
         }
 
         #endSession() {
             console.log("Session ended!");
             this.#setState(Session.states.NOT_IN_SESSION);
-            this.sessionEndHook.call(this);
+            this.sessionEndHook.call();
             this.#elements.clear();
         }
 
@@ -194,7 +198,7 @@
                 }
             };
 
-            if (!this.submitAnswerHook.call(this, event, data)) {
+            if (!this.submitAnswerHook.call(event, data)) {
                 console.log("Submitting answer was stopped by callback!");
                 return;
             }
@@ -255,13 +259,39 @@
         }
     }
 
-    const session = new Session();
+    class SynonymChecker {
+        #session;
 
-    session.sessionStartHook.register(
-        () => console.log(session)
-    );
+        #subjects;
+        #allSynonyms;
+        #allTwins;
 
-    session.submitAnswerHook.register((session, event, data, messages) => {
+        constructor(session) {
+            this.#session = session;
+            this.#fetchSubjects().then(this.#registerHooks.bind(this));
+        }
+
+        #fetchSubjects() {
+            const url = 'https://raw.githubusercontent.com/panda-byte/'
+                + 'kaniwani-synonym-checker/main/data/';
+
+            return Promise.all([
+                fetch(`${url}vocab_subjects.json`),
+                fetch(`${url}vocab_synonyms.json`),
+                fetch(`${url}twins.json`),
+            ]).then(responses => Promise.all(responses.map(
+                response => response.json()
+            ))).then(objects => {
+                this.#subjects = new Map(Object.entries(objects[0]));
+                this.#allSynonyms = new Map(Object.entries(objects[1]));
+                this.#allTwins = new Map(objects[2]);
+            }).catch(() => {
+                console.error("Could not fetch subjects!");
+            });
+        }
+
+        #registerHooks() {
+            this.#session.submitAnswerHook.register((session, event, data, messages) => {
             console.log("Answer submitted!");
             console.log(session);
             console.log(event);
@@ -269,221 +299,8 @@
             console.log(messages);
         }
     );
-
-    const gitURL = "https://raw.githubusercontent.com/panda-byte/kaniwani-synonym-checker/main/data/";
-
-    let [subjectsObject, allSynonymsObject, allTwinsLists]
-            = (await Promise.all([
-        Promise.all([
-            fetch(gitURL + "vocab_subjects.json"),
-            fetch(gitURL + "vocab_synonyms.json"),
-            fetch(gitURL + "twins.json"),
-        ]).then(responses =>
-            Promise.all(responses.map(response => response.json()))
-        )
-    ]))[0];
-
-
-
-    const subjects = new Map(Object.entries(subjectsObject));
-    const allSynonyms = new Map(Object.entries(allSynonymsObject));
-    const allTwins = new Map(allTwinsLists);
-
-    // set cooldown time in ms for blocking enter on wrong answer
-    const cooldownTime = 1000;
-
-    let answerField = null;
-    let answerBox = null;
-    let questionBox = null;
-    let primaryMeaningElement = null;
-    let otherMeaningsElement = null;
-    let partsOfSpeechElement = null; // sc-1m1r938-0
-
-    let inReviewSession = false;
-    let ready = false;
-
-    let answerIncorrect = false;
-    let cooldown = false;
-    const red = 'rgb(226, 50, 91)';
-
-    window.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-            submitAnswer(event);
-
-            // if (answerIncorrect && cooldown) {
-            //     event.stopPropagation();
-            // }
         }
-    }, true);
+    }
 
-    // check if subject in question has twins
-    session.submitAnswerHook.register((session, event, data, messages) => {
-        console.log("Check for twins!");
-
-        const twins = allTwins.get([
-            data.question.primary,
-            ...data.question.secondary,
-            ...data.question.partsOfSpeech
-        ]);
-
-        if (twins) {
-            console.log("Twins!");
-            console.log(twins);
-            event.stopPropagation();
-            return false;
-        } else {
-            console.log("No twins!");
-            return true;
-        }
-    });
-
-    // check if answer is correct
-    session.submitAnswerHook.register((session, event, data, messages) => {
-        console.log("Check if answer is correct!");
-
-        // find correct answer
-        const correctSubject = [...subjects.values()].filter(subject =>
-            subject['primary_meaning'] === data.question.primary
-            && subject['other_meanings'].every(
-                (value, index) =>
-                    value === data.question.secondary[index]
-               )
-        );
-
-        if (correctSubject.length === 0) {
-            throw "No correct answer found!";
-        } else if (correctSubject.length > 1) {
-            throw "Multiple correct answers found!";
-        }
-
-        console.log(`Correct subject:`);
-        console.log(correctSubject[0]);
-
-
-        const correctAnswers = [
-            correctSubject[0]['characters'], ...correctSubject[0]['readings']
-        ];
-        console.log(`correct: ${correctAnswers}`);
-
-        if (correctAnswers.includes(data.answer)) {
-            console.log("Answer was correct!");
-            event.stopPropagation();
-            return false;
-        } else {
-            console.log("Answer was incorrect!");
-
-            return {
-                correct: false,
-                correctSubject: correctSubject,
-                correctAnswers: correctAnswers
-            }
-        }
-    });
-
-    const submitAnswer = async event => {
-        if (!(ready && answerBox !== null)) {
-            answerIncorrect = false;
-            return;
-        }
-
-        console.log("----------------------------------------------");
-
-        const primaryMeaning = primaryMeaningElement.textContent;
-        const otherMeaningsString = otherMeaningsElement.textContent;
-        const otherMeanings =
-            otherMeaningsString ? otherMeaningsString.split(', ') : [];
-
-        const partsOfSpeech = [
-            ...partsOfSpeechElement.querySelectorAll('li > span')
-        ].map(span => span.textContent);
-
-        let answer = answerField.value;
-
-        if (answer.endsWith('n')) {
-            answer = answer.replace('n', 'ん');
-        }
-
-        console.log(`Answer: ${answer}`);
-
-        const meanings = [primaryMeaning, ...otherMeanings];
-        const synonyms = [...new Set(meanings
-            .map(meaning => allSynonyms.get(meaning))
-            .filter(synonymId => synonymId !== undefined)
-            .flat()
-        )].map(synonymId => subjects.get(synonymId.toString()));
-
-        const synonymousAnswers
-            = synonyms.map(synonym => synonym['characters'] + " (" + synonym['readings'] + ")");
-
-        console.log(`Synonyms: ${synonymousAnswers}`);
-
-        const matchingSynonym = synonyms.filter(synonym =>
-            [synonym['characters'], ...synonym['readings']].includes(answer)
-        );
-
-        console.log(`Matching synonym:`);
-        console.log(matchingSynonym[0]);
-
-        // not possible due to CORS violation at the moment
-        // get Jisho.org synonyms
-        // const controller = new AbortController()
-        // setTimeout(() => controller.abort(), 1000)
-        //
-        // const jishoMeanings = await fetch(
-        //     "https://jisho.org/api/v1/search/words?keyword="
-        //     + encodeURIComponent(answer),
-        //     {signal: controller.signal}
-        // ).then(response => response.json());
-
-        console.log("Jisho: ");
-        console.log(jishoMeanings);
-
-        if (!(synonyms.length > 0) || !(matchingSynonym.length > 0)) {
-            console.log("No synonyms found or answer not in synonyms!");
-            return;
-        }
-
-        if (twins) {
-            console.log(`Twins found: ${twins}`);
-            return;
-            // TODO check if answer correct
-            // TODO create userscript that let's player try twice
-        }
-
-
-
-        // TODO make options about storing synonyms
-
-        // TODO: always: if not correct, try again
-
-        // check with small delay
-        // setTimeout(() => {
-        //     const isIncorrect
-        //     = window.getComputedStyle(answerBox).backgroundColor === red;
-        //
-        //     // start cooldown if it changed to incorrect
-        //     if (isIncorrect && !answerIncorrect) {
-        //         cooldown = true;
-        //         setTimeout(() => {
-        //             cooldown = false;
-        //         }, cooldownTime);
-        //     }
-        //
-        //     answerIncorrect = isIncorrect;
-        // }, 10);
-    };
-
-    // //  update state of answer inbetween
-    // // accounts for ignoring wrong answers etc. to reset state
-    // // regardless
-    // setInterval(() => {
-    //     if (!(inReviewSession && answerBox !== null)) {
-    //         answerIncorrect = false;
-    //         return;
-    //     }
-    //
-    //     answerIncorrect = window.getComputedStyle(answerBox).backgroundColor === red;
-    // }, 200);
-
-    // check if user entered review session
+    new SynonymChecker(new Session());
 })();
