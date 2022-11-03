@@ -60,36 +60,40 @@
         ]);
 
         #elements = new Map();
-
-        constructor() {
-            this.checkIfInReviewSession();
-        }
+        #app;
 
         static states = Object.freeze({
+            INITIALIZING: Symbol('INITIALIZING'),
             NOT_IN_SESSION: Symbol('NOT_IN_SESSION'),
-            AWAIT_ANSWER: Symbol('AWAIT_ANSWER'),
-            AWAIT_CONFIRMATION: Symbol('AWAIT_CONFIRMATION'),
+            AWAITING_ANSWER: Symbol('AWAITING_ANSWER'),
+            AWAITING_CONFIRMATION: Symbol('AWAITING_CONFIRMATION'),
         });
 
-        #currentState = Session.states.NOT_IN_SESSION;
+        #state = Session.states.NOT_IN_SESSION;
 
-        get currentState(){
-            return this.#currentState;
+        constructor() {
+            this.#app = document.querySelector('#app');
+            this.#observeReviewSession();
         }
 
-        #setCurrentState(state) {
+        get state(){
+            return this.#state;
+        }
+
+        #setState(state) {
             console.log("New state: ");
             console.log(state);
 
-            this.#currentState = state;
+            this.#state = state;
         }
 
         inSession() {
-            return this.#currentState !== Session.states.NOT_IN_SESSION
+            return this.#state !== Session.states.NOT_IN_SESSION
         }
 
         #startSession() {
             console.log("Session started!");
+            this.#setState(Session.states.AWAITING_ANSWER);
 
             window.addEventListener(
                 'click', this.#clickListener.bind(this), {capture: true}
@@ -104,6 +108,7 @@
 
         #endSession() {
             console.log("Session ended!");
+            this.#setState(Session.states.NOT_IN_SESSION);
             this.sessionEndHook.call(this);
             this.#elements.clear();
         }
@@ -130,7 +135,7 @@
             if (event.key === 'Enter') {
                 this.#submitAnswer(event);
             } else if (event.key === 'Backspace') {
-                if (this.#currentState === Session.states.AWAIT_CONFIRMATION) {
+                if (this.#state === Session.states.AWAITING_CONFIRMATION) {
                     this.#ignoreResult();
                 }
             }
@@ -194,35 +199,30 @@
                 return;
             }
 
-            this.#setCurrentState(Session.states.AWAIT_CONFIRMATION);
+            this.#setState(Session.states.AWAITING_CONFIRMATION);
         }
 
         #ignoreResult() {
-            this.#setCurrentState(Session.states.AWAIT_ANSWER);
+            this.#setState(Session.states.AWAITING_ANSWER);
         }
 
-        checkIfInReviewSession() {
-            setInterval(() => {
-                if (Session.#checkSessionURL()) {
+        #observeReviewSession() {
+            new MutationObserver(() => {
+                if (document.URL.endsWith('/reviews/session')) {
                     if (!this.inSession()) {
-                        this.#setCurrentState(Session.states.AWAIT_ANSWER);
+                        this.#setState(Session.states.INITIALIZING);
                         this.#initSession();
                     }
                 } else {
                     if (this.inSession()) {
-                        this.#setCurrentState(Session.states.NOT_IN_SESSION);
                         this.#endSession();
                     }
                 }
-            }, 100);
-        }
-
-        static #checkSessionURL() {
-            return document.URL.endsWith('/reviews/session');
+            }).observe(this.#app, {childList: true, subtree: true});
         }
 
         #initSession() {
-            const findElements = setInterval(() => {
+            const observer = new MutationObserver(() => {
                 let foundAll = true;
 
                 for (const [name, selector] of this.#selectors.entries()) {
@@ -240,16 +240,18 @@
                 }
 
                 if (foundAll) {
-                    clearInterval(findElements);
+                    observer.disconnect();
 
                     this.#elements.set(
                         'answerBox',
                         this.#elements.get('answerField').parentElement
                     );
 
-                    this.#startSession()
+                    this.#startSession();
                 }
-            }, 100);
+            });
+
+            observer.observe(this.#app, {childList: true, subtree: true});
         }
     }
 
