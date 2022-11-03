@@ -13,6 +13,34 @@
 (async function() {
     'use strict';
 
+    class Utils {
+        // modified from https://stackoverflow.com/a/16436975
+        static arraysEqualOrdered(a, b) {
+            if (a === b) return true;
+            if (a == null || b == null) return (a == null && b == null);
+            if (a.length !== b.length) return false;
+
+            for (let i = 0; i < a.length; ++i) {
+                if (a[i] !== b[i]) return false;
+            }
+            return true;
+        }
+
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript
+        // /Reference/Global_Objects/Set
+        static intersection(a, b) {
+            return new Set([...a].filter(x => b.has(x)));
+        }
+
+        static areIntersecting(a, b) {
+            for (const x of a) {
+                if (b.has(x)) return true;
+            }
+
+            return false;
+        }
+    }
+
     class Hook {
         #session;
         #callbacks = [];
@@ -64,6 +92,7 @@
         #app;
         #subjects;
         #twins;
+        #possibleAnswers = null;
 
         static states = Object.freeze({
             INITIALIZING: Symbol('INITIALIZING'),
@@ -139,7 +168,7 @@
 
         #startSession() {
             console.log("Session started!");
-            this.#setState(Session.states.AWAITING_ANSWER);
+            this.#awaitAnswer();
 
             window.addEventListener(
                 'click', this.#clickListener.bind(this), {capture: true}
@@ -150,6 +179,41 @@
             );
 
             this.sessionStartHook.call();
+        }
+
+        #awaitAnswer() {
+            this.#setState(Session.states.AWAITING_ANSWER);
+
+            const secondaryText = this.#elements.get('secondary').textContent.trim();
+
+            // TODO: find out correct answer
+            const hints = {
+                primary: this.#elements.get('primary').textContent,
+                secondary: secondaryText ?
+                    secondaryText.split(', ') : [],
+                partsOfSpeech: [
+                    ...this.#elements.get('partsOfSpeech')
+                        .querySelectorAll('li > span')
+                ].map(span => this.#adjustPartOfSpeech(span.textContent))
+            }
+
+            const meanings = new Set([hints.primary, ...hints.secondary]);
+
+            this.#possibleAnswers = Array.from(this.#subjects.values()).filter(
+                subject => Utils.areIntersecting(
+                    meanings, new Set([
+                        subject.primary_meaning, ...subject.other_meanings
+                    ])
+                )
+            );
+
+            console.log(hints.partsOfSpeech)
+            console.log("Possible answers: ");
+            console.log(this.#possibleAnswers);
+            console.log(hints.partsOfSpeech)
+
+            // TODO Include parts of speech in vocab!
+
         }
 
         #endSession() {
@@ -253,8 +317,6 @@
         }
 
         #initSession() {
-            console.log("WAD!!");
-
             const findElements = (_, observer) => {
                 let foundAll = true;
 
