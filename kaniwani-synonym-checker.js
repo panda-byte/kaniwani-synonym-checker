@@ -80,6 +80,21 @@
             this.#observeReviewSession();
         }
 
+        #observeReviewSession() {
+            new MutationObserver(() => {
+                if (document.URL.endsWith('/reviews/session')) {
+                    if (!this.inSession()) {
+                        this.#setState(Session.states.INITIALIZING);
+                        this.#initSession();
+                    }
+                } else {
+                    if (this.inSession()) {
+                        this.#endSession();
+                    }
+                }
+            }).observe(this.#app, {childList: true, subtree: true});
+        }
+
         get state(){
             return this.#state;
         }
@@ -210,20 +225,7 @@
             this.#setState(Session.states.AWAITING_ANSWER);
         }
 
-        #observeReviewSession() {
-            new MutationObserver(() => {
-                if (document.URL.endsWith('/reviews/session')) {
-                    if (!this.inSession()) {
-                        this.#setState(Session.states.INITIALIZING);
-                        this.#initSession();
-                    }
-                } else {
-                    if (this.inSession()) {
-                        this.#endSession();
-                    }
-                }
-            }).observe(this.#app, {childList: true, subtree: true});
-        }
+
 
         #initSession() {
             const observer = new MutationObserver(() => {
