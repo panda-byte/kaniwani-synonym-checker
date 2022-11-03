@@ -32,12 +32,17 @@
             return new Set([...a].filter(x => b.has(x)));
         }
 
-        static areIntersecting(a, b) {
+        static areSetsIntersecting(a, b) {
             for (const x of a) {
                 if (b.has(x)) return true;
             }
 
             return false;
+        }
+
+        // https://stackoverflow.com/a/44827922
+        static areSetsEqual(a, b) {
+            return a.size === b.size && [...a].every(value => b.has(value));
         }
     }
 
@@ -200,17 +205,23 @@
             const meanings = new Set([hints.primary, ...hints.secondary]);
 
             this.#possibleAnswers = Array.from(this.#subjects.values()).filter(
-                subject => Utils.areIntersecting(
+                subject => Utils.areSetsIntersecting(
                     meanings, new Set([
                         subject.primary_meaning, ...subject.other_meanings
                     ])
                 )
             );
 
-            console.log(hints.partsOfSpeech)
+
             console.log("Possible answers: ");
             console.log(this.#possibleAnswers);
-            console.log(hints.partsOfSpeech)
+            console.log(hints.partsOfSpeech);
+            console.log(this.#possibleAnswers[0].parts_of_speech);
+
+            console.log(Utils.areSetsEqual(
+                new Set(hints.partsOfSpeech),
+                new Set(this.#possibleAnswers[0].parts_of_speech)
+            ));
 
             // TODO Include parts of speech in vocab!
 
@@ -279,7 +290,17 @@
         }
 
         #adjustPartOfSpeech(partOfSpeech) {
-            return partOfSpeech.toLowerCase();
+            partOfSpeech = partOfSpeech.toLowerCase();
+
+            const mapping = new Map([
+                ['numeric', 'numeral']
+            ]);
+
+            if (mapping.has(partOfSpeech)) {
+                partOfSpeech = mapping.get(partOfSpeech);
+            }
+
+            return partOfSpeech;
         }
 
         #submitAnswer(event) {
