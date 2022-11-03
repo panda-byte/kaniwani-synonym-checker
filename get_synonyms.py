@@ -237,7 +237,8 @@ def prepare_userscript_files(subjects, synonyms):
             'readings',
             'primary_meaning',
             'other_meanings',
-            'auxiliary_meanings'
+            'auxiliary_meanings',
+            'parts_of_speech'
         )) for subject in subjects
         if subject['object'] == 'vocabulary'
     }
