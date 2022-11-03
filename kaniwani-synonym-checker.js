@@ -29,7 +29,7 @@
             const messages = []
 
             for (const callback of this.#callbacks) {
-                const result = callback(session, event, data, messages);
+                const result = callback(this.#session, event, data, messages);
 
                 messages.push(result);
 
@@ -62,6 +62,8 @@
 
         #elements = new Map();
         #app;
+        #subjects;
+        #twins;
 
         static states = Object.freeze({
             INITIALIZING: Symbol('INITIALIZING'),
@@ -72,7 +74,9 @@
 
         #state = Session.states.NOT_IN_SESSION;
 
-        constructor() {
+        constructor(subjects, twins) {
+            this.#subjects = subjects;
+            this.#twins = twins;
             this.#app = document.querySelector('#app');
             this.sessionStartHook = new Hook(this);
             this.sessionEndHook = new Hook(this);
@@ -80,8 +84,25 @@
             this.#observeReviewSession();
         }
 
+        static createSession() {
+            const url = 'https://raw.githubusercontent.com/panda-byte/'
+                + 'kaniwani-synonym-checker/main/data/';
+
+            return Promise.all([
+                fetch(`${url}vocab_subjects.json`),
+                fetch(`${url}twins.json`),
+            ]).then(responses => Promise.all(responses.map(
+                response => response.json()
+            ))).then(objects => {
+                return new Session(
+                    new Map(Object.entries(objects[0])),
+                    new Map(objects[1])
+                );
+            });
+        }
+
         #observeReviewSession() {
-            new MutationObserver(() => {
+            const checkURL = () => {
                 if (document.URL.endsWith('/reviews/session')) {
                     if (!this.inSession()) {
                         this.#setState(Session.states.INITIALIZING);
@@ -92,7 +113,13 @@
                         this.#endSession();
                     }
                 }
-            }).observe(this.#app, {childList: true, subtree: true});
+            }
+
+            checkURL();
+
+            new MutationObserver(checkURL).observe(
+                this.#app, {childList: true, subtree: true}
+            );
         }
 
         get state(){
@@ -225,10 +252,10 @@
             this.#setState(Session.states.AWAITING_ANSWER);
         }
 
-
-
         #initSession() {
-            const observer = new MutationObserver(() => {
+            console.log("WAD!!");
+
+            const findElements = (_, observer) => {
                 let foundAll = true;
 
                 for (const [name, selector] of this.#selectors.entries()) {
@@ -255,8 +282,11 @@
 
                     this.#startSession();
                 }
-            });
+            }
 
+            const observer = new MutationObserver(findElements);
+
+            findElements(null, observer);
             observer.observe(this.#app, {childList: true, subtree: true});
         }
     }
@@ -304,5 +334,5 @@
         }
     }
 
-    new SynonymChecker(new Session());
+    Session.createSession().then(session => new SynonymChecker(session));
 })();
